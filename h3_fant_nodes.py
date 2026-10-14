@@ -118,6 +118,7 @@ class ZuihuoMiniMaxH3MediaLoader(io.ComfyNode):
 
       * ``images``       - Autogrow IMAGE ports (image_0, image_1, ...)
       * ``audios``       - Autogrow AUDIO ports (audio_0, audio_1, ...)
+      * ``videos``       - Autogrow VIDEO ports (video_0, video_1, video_2)
       * ``prompt_text``  - STRING port for the <...> prompt text
                            (named prompt_text, not prompt: see the tooltip)
 
@@ -178,6 +179,21 @@ class ZuihuoMiniMaxH3MediaLoader(io.ComfyNode):
                         max=SPLIT_AUDIOS,
                     ),
                 ),
+                io.Autogrow.Input(
+                    "videos",
+                    optional=True,
+                    template=io.Autogrow.TemplatePrefix(
+                        input=io.Video.Input(
+                            "video",
+                            tooltip="外部视频输入；按 video_0、video_1、video_2 顺序占用参考视频槽位"
+                                    "（最多 3 个，与 Reference Splitter 的 video_1..3 对应）。"
+                                    "任一槽位接通后，本组整体替代 media_state 里的视频项。",
+                        ),
+                        prefix="video_",
+                        min=0,
+                        max=SPLIT_VIDEOS,
+                    ),
+                ),
                 io.String.Input(
                     "prompt_text",
                     multiline=True,
@@ -193,7 +209,7 @@ class ZuihuoMiniMaxH3MediaLoader(io.ComfyNode):
 
     @classmethod
     def validate_inputs(cls, media_state="[]", images=None, audios=None,
-                        prompt_text="", **kwargs):
+                        videos=None, prompt_text="", **kwargs):
         try:
             items = json.loads(media_state or "[]")
         except Exception:
@@ -210,11 +226,13 @@ class ZuihuoMiniMaxH3MediaLoader(io.ComfyNode):
             return f"{len(_ordered_autogrow(images))} external images wired; H3 accepts {PICTURES}."
         if len(_ordered_autogrow(audios)) > AUDIOS:
             return f"{len(_ordered_autogrow(audios))} external audios wired; H3 accepts {AUDIOS}."
+        if len(_ordered_autogrow(videos)) > VIDEOS:
+            return f"{len(_ordered_autogrow(videos))} external videos wired; H3 accepts {VIDEOS}."
         return True
 
     @classmethod
     def fingerprint_inputs(cls, media_state="[]", images=None, audios=None,
-                           prompt_text="", **kwargs):
+                           videos=None, prompt_text="", **kwargs):
         # Tensor payloads are covered by ComfyUI's normal input hashing; this
         # only needs to catch the file-panel state and the wiring silhouette.
         return (
@@ -222,10 +240,11 @@ class ZuihuoMiniMaxH3MediaLoader(io.ComfyNode):
             prompt_text or "",
             tuple(sorted(images or {})),
             tuple(sorted(audios or {})),
+            tuple(sorted(videos or {})),
         )
 
     @classmethod
-    def execute(cls, media_state="[]", images=None, audios=None,
+    def execute(cls, media_state="[]", images=None, audios=None, videos=None,
                 prompt_text="", **kwargs) -> io.NodeOutput:
         # **kwargs 是必须的：ComfyUI 的 EXECUTE_NORMALIZED 会把 input_data_all 里的
         # 每个键原封不动转发给 execute()，任何多余键（例如框架注入的 hidden 输入）
@@ -237,7 +256,7 @@ class ZuihuoMiniMaxH3MediaLoader(io.ComfyNode):
         if not isinstance(items, list):
             raise ValueError("Media Loader state is corrupt; clear the node and re-add media.")
 
-        pictures, videos, video_audios, audios_from_state, strings = _partition(items)
+        pictures, videos_from_state, video_audios, audios_from_state, strings = _partition(items)
 
         def _trim(item):
             trim = item.get("trim") if isinstance(item, dict) else None
@@ -258,6 +277,7 @@ class ZuihuoMiniMaxH3MediaLoader(io.ComfyNode):
         # 否则面板里残留的旧文件路径（例如换机器后已不存在）会先抛错。
         ext_pics = _ordered_autogrow(images)[:PICTURES]
         ext_auds = _ordered_autogrow(audios)[:AUDIOS]
+        ext_vids = _ordered_autogrow(videos)[:VIDEOS]
         text = (prompt_text or "").strip()
 
         if ext_pics:
@@ -269,15 +289,19 @@ class ZuihuoMiniMaxH3MediaLoader(io.ComfyNode):
                 for i in pictures[:PICTURES]
             ]
 
-        vid_t = [
-            media_io.load_video_frames(
-                i["file"],
-                start=_trim(i)[0],
-                end=_trim(i)[1],
-                crop=i.get("crop"),
-            )
-            for i in videos[:VIDEOS]
-        ]
+        if ext_vids:
+            vid_t = ext_vids
+            print(f"[MiniMaxH3 Media Loader] {len(ext_vids)} external video(s) replace the panel's videos")
+        else:
+            vid_t = [
+                media_io.load_video_frames(
+                    i["file"],
+                    start=_trim(i)[0],
+                    end=_trim(i)[1],
+                    crop=i.get("crop"),
+                )
+                for i in videos_from_state[:VIDEOS]
+            ]
         vaud_t = [
             media_io.extract_audio(i["file"], start=_trim(i)[0], end=_trim(i)[1]) if i else None
             for i in video_audios[:VIDEO_AUDIOS]

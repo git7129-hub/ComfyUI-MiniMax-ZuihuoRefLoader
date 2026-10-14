@@ -18,7 +18,7 @@
 ### 外部接入自动覆盖内部输入（ComfyUI 原生行为）
 两个节点都带有外部输入端口：
 
-- `ZuihuoMiniMaxH3MediaLoader`：`images.image_0..8`（9 张图，Autogrow）、`audios.audio_0..2`（3 段音频，Autogrow）、`media_state`（STRING/JSON）、`prompt_text`（STRING）
+- `ZuihuoMiniMaxH3MediaLoader`：`images.image_0..8`（9 张图，Autogrow）、`audios.audio_0..2`（3 段音频，Autogrow）、`videos.video_0..2`（3 段视频，Autogrow）、`media_state`（STRING/JSON）、`prompt_text`（STRING）
 - `ZuihuoMiniMaxH3ReferenceSplitter`：`references`（H3_REFS）、`aspect_ratio`、`duration`（FLOAT）、`short_edge_max`（INT）、`align_to`（INT）
 
 只要某个端口被连线接上，ComfyUI 框架会把链路值传给节点的 `execute`、对应 widget 值被忽略——**节点本身无需写任何"禁用"逻辑**。这正是"外部节点接入后本节点内部输入自动失效"的效果，与 ComfyUI 原生节点原理一致。
@@ -65,7 +65,7 @@ pip install -r requirements.txt
 curl -s http://127.0.0.1:8188/object_info/ZuihuoMiniMaxH3MediaLoader
 ```
 
-应返回 14 个输入口（9 图 + 3 音 + `media_state` + `prompt_text`）。同样核对 `ZuihuoMiniMaxH3ReferenceSplitter`。
+应能看到输入口：`media_state`、`images`（Autogrow，9 图）、`audios`（Autogrow，3 音）、`videos`（Autogrow，3 视频）、`prompt_text`。同样核对 `ZuihuoMiniMaxH3ReferenceSplitter`。
 
 ---
 
