@@ -233,14 +233,23 @@ class ZuihuoMiniMaxH3MediaLoader(io.ComfyNode):
     @classmethod
     def fingerprint_inputs(cls, media_state="[]", images=None, audios=None,
                            videos=None, prompt_text="", **kwargs):
-        # Tensor payloads are covered by ComfyUI's normal input hashing; this
-        # only needs to catch the file-panel state and the wiring silhouette.
+        # 必须感知"每个 Autogrow 槽到底是接通(有张量)还是断开(None)"，
+        # 否则只哈希键名会在拨动开关（tensor <-> None，键名不变）时返回相同的
+        # fingerprint，导致缓存命中、复用旧的 references 包 —— 表现为"开关不生效"。
+        # 部分 ComfyUI 部署（含 RunningHub 可能使用的简化缓存策略）主要依赖
+        # fingerprint 作为缓存键，因此这里显式把每槽的"通/断"状态编进去。
+        def _sig(group):
+            if not group:
+                return ()
+            # (槽名, 是否断开) —— 断开(None)=开关关；接通(非None)=开关开。
+            return tuple(sorted((k, v is None) for k, v in group.items()))
+
         return (
             media_state,
             prompt_text or "",
-            tuple(sorted(images or {})),
-            tuple(sorted(audios or {})),
-            tuple(sorted(videos or {})),
+            _sig(images),
+            _sig(audios),
+            _sig(videos),
         )
 
     @classmethod

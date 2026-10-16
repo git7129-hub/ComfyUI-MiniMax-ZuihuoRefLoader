@@ -23,6 +23,19 @@
 
 只要某个端口被连线接上，ComfyUI 框架会把链路值传给节点的 `execute`、对应 widget 值被忽略——**节点本身无需写任何"禁用"逻辑**。这正是"外部节点接入后本节点内部输入自动失效"的效果，与 ComfyUI 原生节点原理一致。
 
+### 用 ComfySwitchNode 给每个参考图 / 音频做开关
+
+工作流里常用 `ComfySwitchNode`（If/Else Switch，utilities/logic）逐个开关参考图 / 音频：
+
+- `on_true` → 接 `LoadImage` / `LoadAudio`
+- `on_false` → **留空（不接）**
+- `switch`（布尔）→ 接出的 `output` → 本节点的 `images.image_N` / `audios.audio_N`
+
+开关**关**时，交换机输出 `None`；本节点 `execute` 里的 `_ordered_autogrow` 会**丢弃所有 `None` 槽位**，该参考就被排除。开关**开**时，对应张量进入参考集。
+
+> ⚠️ 历史坑：本节点 `fingerprint_inputs` 早期版本只哈希 Autogrow 槽位的**键名**（如 `image_0..8`），不哈希"该槽是接通张量还是 `None`"。在把 `fingerprint` 当作缓存键的运行环境（含部分 RunningHub 部署）下，拨动开关（tensor↔None，**键名不变**）会返回相同指纹 → 节点不重跑 → 复用旧的 references 包 → 表现为"开关不生效"。
+> 已修复：`fingerprint_inputs` 现在感知每个槽的"接通/断开"状态（`(槽名, 是否None)`），拨动任意开关都会让缓存失效、节点重新执行。**升级到含此修复的版本即可**（见 Git 最新提交 / 重新上传 zip）。
+
 ### 兼容性
 - 保留了原 `H3_REFS = io.Custom("H3_REFS")` 类型名，因此原工作流里 `MediaLoader → ReferenceSplitter` 的 `references` 连线（type=H3_REFS）可直接复用，下游消费者无需改动。
 - 节点使用原生 V3 控件（Autogrow 图/音 + 标准 String/Float widget），**不依赖任何自定义前端 JS 面板**，无需 `web/` 目录。
